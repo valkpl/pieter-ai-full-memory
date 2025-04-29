@@ -19,3 +19,8 @@ __pycache__/
 
 # Ignore old script backups
 *OLD.py
+
+*.mp3
+*.zip
+__pycache__/
+.pieter-whisper-env/
