@@ -1,0 +1,21 @@
+# Ignore environment config and secrets
+.env
+.env.*
+
+# Ignore OS/macOS junk
+.DS_Store
+
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+
+# Ignore audio files
+*.mp3
+*.wav
+*.m4a
+
+# Ignore log files
+*.log
+
+# Ignore old script backups
+*OLD.py
