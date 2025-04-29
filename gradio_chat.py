@@ -3,7 +3,7 @@ import os
 import gradio as gr
 
 from llama_index.core import VectorStoreIndex, StorageContext
-from llama_index.vector_stores.pinecone import PineconeVectorStore
+from llama_index.core.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
