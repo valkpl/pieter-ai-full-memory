@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index import VectorStoreIndex, StorageContext
+from llama_index.indices.vector_store import VectorStoreIndex
+from llama_index.storage.storage_context import StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
