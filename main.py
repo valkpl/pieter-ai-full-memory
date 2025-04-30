@@ -13,11 +13,11 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index import VectorStoreIndex, StorageContext
+from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.indices.service_context import ServiceContext
+from llama_index.core.service_context import ServiceContext
 from pinecone import Pinecone
 
 # Load environment variables
@@ -35,9 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static plugin files
-app.mount("/.well-known", StaticFiles(directory=".well-known"), name="static")
-app.mount("/", StaticFiles(directory=".", html=True), name="root-static")
+# Serve plugin manifest + OpenAPI schema
+app.mount("/.well-known", StaticFiles(directory=".well-known"), name="plugin-manifest")
+app.mount("/", StaticFiles(directory=".", html=True), name="root-files")
 
 # Initialize Pinecone
 try:
@@ -46,7 +46,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Pinecone initialization failed: {str(e)}")
 
-# Create vector store + service context
+# Create vector store and context
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -63,7 +63,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index loading failed: {str(e)}")
 
-# Topic-based filter classification
+# Categorize prompt intent
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(w in prompt for w in ["instagram", "caption", "social"]):
@@ -76,7 +76,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Query logic
+# Run query
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -100,14 +100,13 @@ def chat_with_pieter_ai(question: str) -> str:
     except Exception as e:
         return f"❌ An error occurred while processing your query: {str(e)}"
 
-# Predict endpoint
+# API route
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
         question = body.get("data", [""])[0]
         if not question:
             return JSONResponse(status_code=400, content={"result": "⚠️ Please include a question."})
-
         result = chat_with_pieter_ai(question)
         return JSONResponse(content={"result": result})
     except Exception as e:
