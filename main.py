@@ -1,5 +1,4 @@
-# Pieter AI Memory API
-# Version: April 30, 2025
+# Pieter AI Memory API - FINAL for llama-index==0.10.28
 
 import os
 from dotenv import load_dotenv
@@ -8,21 +7,21 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index.core import VectorStoreIndex, StorageContext
+from llama_index import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.core.service_context import ServiceContext
-from llama_index.schema import MetadataFilter, MetadataFilters  # ✅ CORRECT import for 0.10.28
+from llama_index.indices.service_context import ServiceContext
+from llama_index.schema import MetadataFilter, MetadataFilters  # ✅ CORRECT FOR 0.10.28
 from pinecone import Pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Set up FastAPI app
+# FastAPI app
 app = FastAPI()
 
-# Enable CORS for OpenAI plugin access
+# CORS for OpenAI plugin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,18 +30,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Correct static routing for plugin files
+# Serve plugin manifest & OpenAPI spec
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
-# Initialize Pinecone
-try:
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    pinecone_index = pc.Index("pieter-ai-full-memory")
-except Exception as e:
-    raise RuntimeError(f"❌ Pinecone initialization failed: {str(e)}")
+# Pinecone init (SDK v3)
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+pinecone_index = pc.Index("pieter-ai-full-memory")
 
-# Vector store + service context
+# Vector store & index
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -50,14 +46,10 @@ service_context = ServiceContext.from_defaults(
     embed_model=OpenAIEmbedding()
 )
 
-# Load vector index
-try:
-    index = VectorStoreIndex.from_vector_store(
-        vector_store=vector_store,
-        service_context=service_context
-    )
-except Exception as e:
-    raise RuntimeError(f"❌ Index loading failed: {str(e)}")
+index = VectorStoreIndex.from_vector_store(
+    vector_store=vector_store,
+    service_context=service_context
+)
 
 # Intent classifier
 def classify_intent(prompt):
@@ -72,7 +64,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Main query logic
+# Query logic
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -85,29 +77,24 @@ def chat_with_pieter_ai(question: str) -> str:
         "sermon": ["blogs", "book", "transcripts"]
     }
 
-    sources = filter_map.get(intent)
-    metadata_filters = (
-        MetadataFilters(filters=[MetadataFilter(key="source", operator="in", value=sources)])
-        if sources else None
-    )
+    filters = None
+    if intent in filter_map:
+        filters = MetadataFilters(
+            filters=[
+                MetadataFilter(key="source", operator="in", value=filter_map[intent])
+            ]
+        )
 
     try:
-        query_engine = index.as_query_engine(similarity_top_k=5, filters=metadata_filters)
+        query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
         response = query_engine.query(question)
-        if not response or not str(response).strip():
-            return "⚠️ No answer found. Try rephrasing your question or asking something else."
         return str(response)
     except Exception as e:
-        return f"❌ An error occurred while processing your query: {str(e)}"
+        return f"❌ Error: {str(e)}"
 
-# API endpoint for plugin access
+# POST endpoint for GPT plugin
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
-    try:
-        question = body.get("data", [""])[0]
-        if not question:
-            return JSONResponse(status_code=400, content={"result": "⚠️ Please include a question."})
-        result = chat_with_pieter_ai(question)
-        return JSONResponse(content={"result": result})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"result": f"❌ Internal server error: {str(e)}"})
+    question = body.get("data", [""])[0]
+    result = chat_with_pieter_ai(question)
+    return JSONResponse(content={"result": result})
