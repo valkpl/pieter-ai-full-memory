@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse
 import gradio as gr
 
@@ -14,20 +14,20 @@ from pinecone import Pinecone
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone client
+# Initialize Pinecone client and vector store
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 pinecone_index = pc.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# Set global LLM + embeddings
+# Set global LLM + embedding model
 Settings.llm = OpenAI(model="gpt-4")
 Settings.embed_model = OpenAIEmbedding()
 
-# Load index
+# Load vector index
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
 
-# Intent classifier to refine filters
+# Intent classifier to apply custom filters
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "caption", "social"]):
@@ -40,7 +40,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Core chat logic
+# Core logic
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -64,13 +64,12 @@ def chat_with_pieter_ai(question: str) -> str:
 app = FastAPI()
 
 @app.post("/predict/")
-async def predict(request: Request):
-    body = await request.json()
+async def predict(body: dict = Body(...)):
     question = body.get("data", [""])[0]
     result = chat_with_pieter_ai(question)
     return JSONResponse(content={"result": result})
 
-# Gradio UI
+# Gradio UI at root
 gradio_ui = gr.Interface(
     fn=chat_with_pieter_ai,
     inputs=gr.Textbox(lines=2, placeholder="Ask a question about celibacy, vocation, community..."),
@@ -79,5 +78,5 @@ gradio_ui = gr.Interface(
     description="A chatbot trained on the life, theology, and work of Pieter Valk. Ask away!",
 )
 
-# Mount Gradio on root path
+# Mount Gradio to /
 app = gr.mount_gradio_app(app, gradio_ui, path="/")
