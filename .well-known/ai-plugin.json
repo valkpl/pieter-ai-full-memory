@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Pieter AI Memory",
+  "name_for_model": "pieter_memory",
+  "description_for_human": "Ask questions answered by Pieter Valk's writings, talks, and teachings.",
+  "description_for_model": "Use this plugin to access Pieter Valk’s memory and answer user questions with the best match from his work.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://pieter-ai-full-memory.onrender.com/openapi.json",
+    "is_user_authenticated": false
+  },
+  "logo_url": "https://equipyourcommunity.org/wp-content/uploads/2021/08/favicon-512.png",
+  "contact_email": "me@pieterlvalk.com",
+  "legal_info_url": "https://pieterlvalk.com"
+}
