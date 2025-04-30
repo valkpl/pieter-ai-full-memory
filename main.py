@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index.indices.vector_store import VectorStoreIndex
+# ✅ Correct imports for llama-index==0.10.28
+from llama_index.indices import VectorStoreIndex
 from llama_index.storage.storage_context import StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -36,9 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Serve plugin manifest + OpenAPI schema correctly
+# ✅ Correct static routing (fixes POST conflict at root)
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
-app.mount("/static", StaticFiles(directory=".", html=True), name="static")  # ✅ FIXED: No conflict with /
+app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
 # Initialize Pinecone
 try:
