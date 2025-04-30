@@ -1,4 +1,4 @@
-# Pieter AI Memory API - FINAL working version for llama-index==0.10.28
+# Pieter AI Memory API - Stable for llama-index==0.10.28
 
 import os
 from dotenv import load_dotenv
@@ -15,13 +15,17 @@ from llama_index.core.service_context import ServiceContext
 from llama_index.core.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
+# Optional: confirm installed version
+import llama_index
+print("📦 llama-index version:", llama_index.__version__)
+
 # Load environment variables
 load_dotenv()
 
 # FastAPI app
 app = FastAPI()
 
-# CORS for OpenAI plugin
+# CORS for plugin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,14 +38,14 @@ app.add_middleware(
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
-# Initialize Pinecone (SDK v3)
+# Initialize Pinecone (v3 SDK)
 try:
     pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     pinecone_index = pc.Index("pieter-ai-full-memory")
 except Exception as e:
     raise RuntimeError(f"❌ Pinecone initialization failed: {str(e)}")
 
-# Set up vector store + context
+# Set up index
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -49,7 +53,6 @@ service_context = ServiceContext.from_defaults(
     embed_model=OpenAIEmbedding()
 )
 
-# Load vector index
 try:
     index = VectorStoreIndex.from_vector_store(
         vector_store=vector_store,
@@ -76,20 +79,19 @@ def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
 
-    intent = classify_intent(question)
     filter_map = {
         "social": ["social_media", "blogs", "book"],
         "article": ["blogs", "book"],
         "pitch": ["blogs", "book", "social_media"],
         "sermon": ["blogs", "book", "transcripts"]
     }
-
+    intent = classify_intent(question)
     filters = None
-    sources = filter_map.get(intent)
-    if sources:
+
+    if intent in filter_map:
         try:
             filters = MetadataFilters(
-                filters=[MetadataFilter(key="source", operator="in", value=sources)]
+                filters=[MetadataFilter(key="source", operator="in", value=filter_map[intent])]
             )
         except Exception as e:
             return f"❌ Filter construction failed: {str(e)}"
