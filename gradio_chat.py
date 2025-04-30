@@ -3,17 +3,19 @@ import os
 import gradio as gr
 
 from llama_index.core import VectorStoreIndex, StorageContext
-
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
 from pinecone import Pinecone, ServerlessSpec
 
-# --- Step 1: Load environment variables ---
+from fastapi import FastAPI
+import uvicorn
+
+# --- Load env vars ---
 load_dotenv()
 
-# --- Step 2: Set up Pinecone ---
+# --- Set up Pinecone ---
 index_name = "pieter-ai-full-memory"
 pc = Pinecone(
     api_key=os.getenv("PINECONE_API_KEY"),
@@ -23,14 +25,14 @@ pinecone_index = pc.Index(index_name)
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# --- Step 3: Set global LLM + Embeddings ---
-Settings.llm = OpenAI(model="gpt-4-turbo")
+# --- Set global models ---
+Settings.llm = OpenAI(model="gpt-4")
 Settings.embed_model = OpenAIEmbedding()
 
-# --- Step 4: Load index from Pinecone ---
+# --- Load vector index ---
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
 
-# --- Step 5: Intent classification ---
+# --- Intent classification ---
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "social post", "caption", "twitter", "x ", "facebook", "threads", "tiktok", "socials"]):
@@ -43,7 +45,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# --- Step 6: Chat function ---
+# --- Chat logic ---
 def chat_with_pieter_ai(question):
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -63,14 +65,17 @@ def chat_with_pieter_ai(question):
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
-# --- Step 7: Gradio UI ---
-api = gr.Interface(
+# --- Create Gradio interface ---
+gradio_app = gr.Interface(
     fn=chat_with_pieter_ai,
-    inputs=gr.Textbox(lines=2, placeholder="Ask a question about celibacy, vocation, community..."),
-    outputs="text",
-    title="Pieter AI Assistant",
-    description="A chatbot trained on the life, theology, and work of Pieter Valk. Ask away!"
-)
+    inputs=gr.Textbox(label="Your Question"),
+    outputs=gr.Textbox(label="Pieter AI’s Response"),
+    allow_flagging="never"
+).queue()
+
+# --- Mount with FastAPI ---
+app = FastAPI()
+app = gr.mount_gradio_app(app, gradio_app, path="/predict")
 
 if __name__ == "__main__":
-    api.launch(server_name="0.0.0.0", server_port=7860)
+    uvicorn.run(app, host="0.0.0.0", port=7860)
