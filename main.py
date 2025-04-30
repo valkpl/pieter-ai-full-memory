@@ -8,29 +8,26 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
-import pinecone
+from pinecone import Pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone (correct usage)
-pinecone.init(
-    api_key=os.getenv("PINECONE_API_KEY"),
-    environment=os.getenv("PINECONE_ENVIRONMENT")
-)
-pinecone_index = pinecone.Index("pieter-ai-full-memory")
+# Initialize Pinecone client (new SDK usage)
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+pinecone_index = pc.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# Set global LLM + embeddings
+# Set global LLM and embedding model
 Settings.llm = OpenAI(model="gpt-4")
 Settings.embed_model = OpenAIEmbedding()
 
-# Load index
+# Load index from vector store
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
 
-# Intent classifier to refine filters
-def classify_intent(prompt):
+# Intent classification logic
+def classify_intent(prompt: str) -> str:
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "caption", "social"]):
         return "social"
@@ -62,7 +59,7 @@ def chat_with_pieter_ai(question: str) -> str:
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
-# FastAPI app
+# FastAPI app definition
 app = FastAPI()
 
 @app.post("/predict/")
