@@ -8,10 +8,10 @@
     "type": "none"
   },
   "api": {
-    "type": "openapi",
-    "url": "https://pieter-ai-full-memory.onrender.com/openapi.json",
-    "is_user_authenticated": false
-  },
+  "type": "openapi",
+  "url": "https://pieter-ai-full-memory.onrender.com/openapi.yaml",
+  "is_user_authenticated": false
+},
   "logo_url": "https://equipyourcommunity.org/wp-content/uploads/2021/08/favicon-512.png",
   "contact_email": "me@pieterlvalk.com",
   "legal_info_url": "https://pieterlvalk.com"
