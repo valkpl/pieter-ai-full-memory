@@ -9,7 +9,7 @@
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Body
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -26,7 +26,7 @@ load_dotenv()
 # Set up FastAPI app
 app = FastAPI()
 
-# Enable CORS for OpenAI plugin access
+# Enable CORS (required for OpenAI plugin access)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,13 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve plugin manifest from .well-known/
+# Serve static plugin files
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="static")
-
-# Serve openapi.yaml at root (required by OpenAI plugin setup)
-@app.get("/openapi.yaml", include_in_schema=False)
-async def get_openapi_spec():
-    return FileResponse("openapi.yaml")
+app.mount("/", StaticFiles(directory=".", html=True), name="root-static")
 
 # Initialize Pinecone
 try:
@@ -58,7 +54,7 @@ service_context = ServiceContext.from_defaults(
     embed_model=OpenAIEmbedding()
 )
 
-# Load index
+# Load vector index
 try:
     index = VectorStoreIndex.from_vector_store(
         vector_store=vector_store,
@@ -67,7 +63,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index loading failed: {str(e)}")
 
-# Classify prompt into a topic
+# Topic-based filter classification
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(w in prompt for w in ["instagram", "caption", "social"]):
@@ -80,7 +76,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Main query function
+# Query logic
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -92,20 +88,19 @@ def chat_with_pieter_ai(question: str) -> str:
         "pitch": ["blogs", "book", "social_media"],
         "sermon": ["blogs", "book", "transcripts"]
     }
+
     filters = {"source": {"$in": filter_map.get(intent, [])}} if intent in filter_map else {}
 
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
         response = query_engine.query(question)
-
         if not response or not str(response).strip():
             return "⚠️ No answer found. Try rephrasing your question or asking something else."
         return str(response)
-
     except Exception as e:
         return f"❌ An error occurred while processing your query: {str(e)}"
 
-# POST /predict/ endpoint
+# Predict endpoint
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
@@ -115,6 +110,5 @@ async def predict(body: dict = Body(...)):
 
         result = chat_with_pieter_ai(question)
         return JSONResponse(content={"result": result})
-
     except Exception as e:
         return JSONResponse(status_code=500, content={"result": f"❌ Internal server error: {str(e)}"})
