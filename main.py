@@ -8,26 +8,27 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
+from llama_index.core.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone client (new SDK usage)
+# Initialize Pinecone client (correct SDK v3 usage)
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 pinecone_index = pc.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# Set global LLM and embedding model
+# Set global LLM and embedder
 Settings.llm = OpenAI(model="gpt-4")
 Settings.embed_model = OpenAIEmbedding()
 
-# Load index from vector store
+# Load index
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
 
-# Intent classification logic
-def classify_intent(prompt: str) -> str:
+# Intent classifier to refine filters
+def classify_intent(prompt):
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "caption", "social"]):
         return "social"
@@ -39,18 +40,26 @@ def classify_intent(prompt: str) -> str:
         return "sermon"
     return "general"
 
-# Core chat logic
+# Main query logic
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
 
     intent = classify_intent(question)
-    filters = {
-        "social": {"source": {"$in": ["social_media", "blogs", "book"]}},
-        "article": {"source": {"$in": ["blogs", "book"]}},
-        "pitch": {"source": {"$in": ["blogs", "book", "social_media"]}},
-        "sermon": {"source": {"$in": ["blogs", "book", "transcripts"]}},
-    }.get(intent, {})
+    filter_map = {
+        "social": ["social_media", "blogs", "book"],
+        "article": ["blogs", "book"],
+        "pitch": ["blogs", "book", "social_media"],
+        "sermon": ["blogs", "book", "transcripts"]
+    }
+
+    filters = None
+    if intent in filter_map:
+        filters = MetadataFilters(
+            filters=[
+                MetadataFilter(key="source", operator="in", value=filter_map[intent])
+            ]
+        )
 
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
@@ -59,7 +68,7 @@ def chat_with_pieter_ai(question: str) -> str:
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
-# FastAPI app definition
+# FastAPI app
 app = FastAPI()
 
 @app.post("/predict/")
