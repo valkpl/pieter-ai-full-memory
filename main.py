@@ -13,7 +13,7 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
-from llama_index.core.schema import MetadataFilter, MetadataFilters  # ✅ NEW
+from llama_index.core.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
 # Load environment variables
@@ -85,7 +85,6 @@ def chat_with_pieter_ai(question: str) -> str:
         "sermon": ["blogs", "book", "transcripts"]
     }
 
-    # ✅ NEW: use MetadataFilters instead of raw dict
     sources = filter_map.get(intent)
     metadata_filters = (
         MetadataFilters(filters=[MetadataFilter(key="source", operator="in", value=sources)])
