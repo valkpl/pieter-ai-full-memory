@@ -26,7 +26,7 @@ load_dotenv()
 # Set up FastAPI app
 app = FastAPI()
 
-# Enable CORS (needed for OpenAI GPT "actions")
+# Enable CORS for OpenAI plugin access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,13 +35,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve plugin manifest (optional for plugin legacy compatibility)
+# Serve plugin manifest from .well-known/
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="static")
 
-# Serve OpenAPI YAML for GPT "actions"
+# Serve openapi.yaml at root (required by OpenAI plugin setup)
 @app.get("/openapi.yaml", include_in_schema=False)
-async def get_openapi_yaml():
-    return FileResponse("openapi.yaml", media_type="text/yaml")
+async def get_openapi_spec():
+    return FileResponse("openapi.yaml")
 
 # Initialize Pinecone
 try:
@@ -58,7 +58,7 @@ service_context = ServiceContext.from_defaults(
     embed_model=OpenAIEmbedding()
 )
 
-# Load vector index
+# Load index
 try:
     index = VectorStoreIndex.from_vector_store(
         vector_store=vector_store,
@@ -67,7 +67,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index loading failed: {str(e)}")
 
-# Topic-based filter classification
+# Classify prompt into a topic
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(w in prompt for w in ["instagram", "caption", "social"]):
@@ -80,7 +80,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Query logic
+# Main query function
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -92,26 +92,29 @@ def chat_with_pieter_ai(question: str) -> str:
         "pitch": ["blogs", "book", "social_media"],
         "sermon": ["blogs", "book", "transcripts"]
     }
-
     filters = {"source": {"$in": filter_map.get(intent, [])}} if intent in filter_map else {}
 
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
         response = query_engine.query(question)
+
         if not response or not str(response).strip():
             return "⚠️ No answer found. Try rephrasing your question or asking something else."
         return str(response)
+
     except Exception as e:
         return f"❌ An error occurred while processing your query: {str(e)}"
 
-# Predict endpoint
+# POST /predict/ endpoint
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
         question = body.get("data", [""])[0]
         if not question:
             return JSONResponse(status_code=400, content={"result": "⚠️ Please include a question."})
+
         result = chat_with_pieter_ai(question)
         return JSONResponse(content={"result": result})
+
     except Exception as e:
         return JSONResponse(status_code=500, content={"result": f"❌ Internal server error: {str(e)}"})

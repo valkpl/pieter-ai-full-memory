@@ -2,13 +2,13 @@ openapi: 3.0.0
 info:
   title: Pieter AI Memory API
   version: 1.0.0
-  description: Query Pieter Valk’s memory — sourced from his writings, talks, and teachings.
-
+servers:
+  - url: https://pieter-ai-full-memory.onrender.com
 paths:
   /predict/:
     post:
-      summary: Get a response from Pieter AI Memory
-      operationId: getPieterMemory
+      summary: Query Pieter's memory index
+      operationId: queryPieterMemory
       requestBody:
         required: true
         content:
@@ -20,10 +20,9 @@ paths:
                   type: array
                   items:
                     type: string
-                  example: ["What does Pieter say about celibacy?"]
       responses:
         '200':
-          description: Response from the memory engine
+          description: Successful response
           content:
             application/json:
               schema:
