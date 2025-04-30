@@ -3,30 +3,37 @@ import os
 from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse
 
-from llama_index.core import VectorStoreIndex, StorageContext
+from llama_index import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.core.settings import Settings
+from llama_index.indices.query.schema import QueryBundle
+from llama_index.indices.service_context import ServiceContext
+from llama_index.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone client
+# Initialize Pinecone client (correct for SDK v3)
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 pinecone_index = pc.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# Set global LLM and embedder
-Settings.llm = OpenAI(model="gpt-4")
-Settings.embed_model = OpenAIEmbedding()
+# Set global LLM and embedding model
+service_context = ServiceContext.from_defaults(
+    llm=OpenAI(model="gpt-4"),
+    embed_model=OpenAIEmbedding()
+)
 
 # Load index
-index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+index = VectorStoreIndex.from_vector_store(
+    vector_store=vector_store,
+    service_context=service_context
+)
 
-# Intent classifier
+# Intent classifier to refine filters
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "caption", "social"]):
@@ -52,9 +59,13 @@ def chat_with_pieter_ai(question: str) -> str:
         "sermon": ["blogs", "book", "transcripts"]
     }
 
-    filters = {}
+    filters = None
     if intent in filter_map:
-        filters = {"source": {"$in": filter_map[intent]}}
+        filters = MetadataFilters(
+            filters=[
+                MetadataFilter(key="source", value=filter_map[intent], operator="in")
+            ]
+        )
 
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
