@@ -8,7 +8,7 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
-from llama_index.core.schema import MetadataFilter, MetadataFilters
+from llama_index.core.retrievers import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
 # Load environment variables
