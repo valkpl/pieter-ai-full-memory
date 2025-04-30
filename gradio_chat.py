@@ -24,7 +24,7 @@ vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
 # --- Step 3: Set global LLM + Embeddings ---
-Settings.llm = OpenAI(model="gpt-3.5-turbo")
+Settings.llm = OpenAI(model="gpt-4-turbo")
 Settings.embed_model = OpenAIEmbedding()
 
 # --- Step 4: Load index from Pinecone ---
