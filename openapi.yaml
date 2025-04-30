@@ -1,0 +1,33 @@
+openapi: 3.0.0
+info:
+  title: Pieter AI Memory API
+  version: 1.0.0
+  description: Query Pieter Valk’s memory — sourced from his writings, talks, and teachings.
+
+paths:
+  /predict/:
+    post:
+      summary: Get a response from Pieter AI Memory
+      operationId: getPieterMemory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    type: string
+                  example: ["What does Pieter say about celibacy?"]
+      responses:
+        '200':
+          description: Response from the memory engine
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
