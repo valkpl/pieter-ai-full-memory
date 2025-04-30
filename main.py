@@ -1,4 +1,4 @@
-# Pieter AI Memory API - FINAL for llama-index==0.10.28
+# Pieter AI Memory API - FINAL working version for llama-index==0.10.28
 
 import os
 from dotenv import load_dotenv
@@ -7,12 +7,12 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index import VectorStoreIndex, StorageContext
+from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.indices.service_context import ServiceContext
-from llama_index.schema import MetadataFilter, MetadataFilters  # ✅ CORRECT FOR 0.10.28
+from llama_index.core.service_context import ServiceContext
+from llama_index.core.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
 # Load environment variables
@@ -34,11 +34,14 @@ app.add_middleware(
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
-# Pinecone init (SDK v3)
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-pinecone_index = pc.Index("pieter-ai-full-memory")
+# Initialize Pinecone (SDK v3)
+try:
+    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    pinecone_index = pc.Index("pieter-ai-full-memory")
+except Exception as e:
+    raise RuntimeError(f"❌ Pinecone initialization failed: {str(e)}")
 
-# Vector store & index
+# Set up vector store + context
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -46,10 +49,14 @@ service_context = ServiceContext.from_defaults(
     embed_model=OpenAIEmbedding()
 )
 
-index = VectorStoreIndex.from_vector_store(
-    vector_store=vector_store,
-    service_context=service_context
-)
+# Load vector index
+try:
+    index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store,
+        service_context=service_context
+    )
+except Exception as e:
+    raise RuntimeError(f"❌ Index loading failed: {str(e)}")
 
 # Intent classifier
 def classify_intent(prompt):
@@ -78,23 +85,33 @@ def chat_with_pieter_ai(question: str) -> str:
     }
 
     filters = None
-    if intent in filter_map:
-        filters = MetadataFilters(
-            filters=[
-                MetadataFilter(key="source", operator="in", value=filter_map[intent])
-            ]
-        )
+    sources = filter_map.get(intent)
+    if sources:
+        try:
+            filters = MetadataFilters(
+                filters=[MetadataFilter(key="source", operator="in", value=sources)]
+            )
+        except Exception as e:
+            return f"❌ Filter construction failed: {str(e)}"
 
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
         response = query_engine.query(question)
+        if not response or not str(response).strip():
+            return "⚠️ No answer found. Try rephrasing your question or asking something else."
         return str(response)
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"❌ Query engine error: {str(e)}"
 
 # POST endpoint for GPT plugin
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
-    question = body.get("data", [""])[0]
-    result = chat_with_pieter_ai(question)
-    return JSONResponse(content={"result": result})
+    try:
+        question = body.get("data")
+        if not question or not isinstance(question, list) or not question[0].strip():
+            return JSONResponse(status_code=400, content={"result": "⚠️ Please include a valid question."})
+
+        result = chat_with_pieter_ai(question[0])
+        return JSONResponse(content={"result": result})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"result": f"❌ Internal server error: {str(e)}"})
