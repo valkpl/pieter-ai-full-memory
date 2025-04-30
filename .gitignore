@@ -24,3 +24,5 @@ __pycache__/
 *.zip
 __pycache__/
 .pieter-whisper-env/
+*.pyc
+pieter-whisper-env/
