@@ -8,15 +8,18 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
-from llama_index.core.retrievers import MetadataFilter, MetadataFilters
-from pinecone import Pinecone
+from llama_index.core.vector_stores import MetadataFilter, MetadataFilters, FilterOperator, FilterCondition
+import pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone client (correct SDK v3 usage)
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-pinecone_index = pc.Index("pieter-ai-full-memory")
+# Initialize Pinecone
+pinecone.init(
+    api_key=os.getenv("PINECONE_API_KEY"),
+    environment=os.getenv("PINECONE_ENVIRONMENT")
+)
+pinecone_index = pinecone.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
@@ -57,8 +60,13 @@ def chat_with_pieter_ai(question: str) -> str:
     if intent in filter_map:
         filters = MetadataFilters(
             filters=[
-                MetadataFilter(key="source", operator="in", value=filter_map[intent])
-            ]
+                MetadataFilter(
+                    key="source",
+                    operator=FilterOperator.IN,
+                    value=filter_map[intent]
+                )
+            ],
+            condition=FilterCondition.AND
         )
 
     try:
