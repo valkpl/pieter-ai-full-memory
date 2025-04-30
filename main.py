@@ -13,6 +13,7 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
+from llama_index.core.schema import MetadataFilter, MetadataFilters  # ✅ NEW
 from pinecone import Pinecone
 
 # Load environment variables
@@ -84,10 +85,15 @@ def chat_with_pieter_ai(question: str) -> str:
         "sermon": ["blogs", "book", "transcripts"]
     }
 
-    filters = {"source": {"$in": filter_map.get(intent, [])}} if intent in filter_map else {}
+    # ✅ NEW: use MetadataFilters instead of raw dict
+    sources = filter_map.get(intent)
+    metadata_filters = (
+        MetadataFilters(filters=[MetadataFilter(key="source", operator="in", value=sources)])
+        if sources else None
+    )
 
     try:
-        query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
+        query_engine = index.as_query_engine(similarity_top_k=5, filters=metadata_filters)
         response = query_engine.query(question)
         if not response or not str(response).strip():
             return "⚠️ No answer found. Try rephrasing your question or asking something else."
