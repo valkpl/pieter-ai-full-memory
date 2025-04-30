@@ -8,14 +8,17 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
-from pinecone import Pinecone
+import pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone client
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-pinecone_index = pc.Index("pieter-ai-full-memory")
+# Initialize Pinecone (correct usage)
+pinecone.init(
+    api_key=os.getenv("PINECONE_API_KEY"),
+    environment=os.getenv("PINECONE_ENVIRONMENT")
+)
+pinecone_index = pinecone.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
