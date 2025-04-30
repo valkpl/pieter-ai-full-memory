@@ -3,19 +3,17 @@ import os
 from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse
 
-from llama_index import VectorStoreIndex, StorageContext
+from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.indices.query.schema import QueryBundle
-from llama_index.indices.service_context import ServiceContext
-from llama_index.schema import MetadataFilter, MetadataFilters
+from llama_index.core.service_context import ServiceContext
 from pinecone import Pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone client (correct for SDK v3)
+# Initialize Pinecone (correct for SDK v3)
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 pinecone_index = pc.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
@@ -33,7 +31,7 @@ index = VectorStoreIndex.from_vector_store(
     service_context=service_context
 )
 
-# Intent classifier to refine filters
+# Intent classifier
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "caption", "social"]):
@@ -46,26 +44,20 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Main query logic
+# Query logic
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
 
     intent = classify_intent(question)
     filter_map = {
-        "social": ["social_media", "blogs", "book"],
-        "article": ["blogs", "book"],
-        "pitch": ["blogs", "book", "social_media"],
-        "sermon": ["blogs", "book", "transcripts"]
+        "social": {"source": {"$in": ["social_media", "blogs", "book"]}},
+        "article": {"source": {"$in": ["blogs", "book"]}},
+        "pitch": {"source": {"$in": ["blogs", "book", "social_media"]}},
+        "sermon": {"source": {"$in": ["blogs", "book", "transcripts"]}},
     }
 
-    filters = None
-    if intent in filter_map:
-        filters = MetadataFilters(
-            filters=[
-                MetadataFilter(key="source", value=filter_map[intent], operator="in")
-            ]
-        )
+    filters = filter_map.get(intent)
 
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
