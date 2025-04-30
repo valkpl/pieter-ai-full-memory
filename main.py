@@ -9,31 +9,25 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
-import pinecone
+from pinecone import Pinecone
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Pinecone
-pinecone.init(
-    api_key=os.getenv("PINECONE_API_KEY"),
-    environment="us-east-1-aws"  # adjust if different
-)
-index_name = "pieter-ai-full-memory"
-pinecone_index = pinecone.Index(index_name)
-
-# Setup vector store
+# Initialize Pinecone client
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+pinecone_index = pc.Index("pieter-ai-full-memory")
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# Configure LLM and embeddings
+# Set global LLM + embeddings
 Settings.llm = OpenAI(model="gpt-4")
 Settings.embed_model = OpenAIEmbedding()
 
-# Load vector index
+# Load index
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
 
-# Intent classification
+# Intent classifier to refine filters
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "caption", "social"]):
@@ -46,7 +40,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Chat logic
+# Core chat logic
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -66,7 +60,7 @@ def chat_with_pieter_ai(question: str) -> str:
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
-# Create FastAPI app
+# FastAPI app
 app = FastAPI()
 
 @app.post("/predict/")
@@ -76,7 +70,7 @@ async def predict(request: Request):
     result = chat_with_pieter_ai(question)
     return JSONResponse(content={"result": result})
 
-# Create Gradio interface
+# Gradio UI
 gradio_ui = gr.Interface(
     fn=chat_with_pieter_ai,
     inputs=gr.Textbox(lines=2, placeholder="Ask a question about celibacy, vocation, community..."),
@@ -85,5 +79,5 @@ gradio_ui = gr.Interface(
     description="A chatbot trained on the life, theology, and work of Pieter Valk. Ask away!",
 )
 
-# Mount Gradio at root
+# Mount Gradio on root path
 app = gr.mount_gradio_app(app, gradio_ui, path="/")
