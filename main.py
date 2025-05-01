@@ -1,4 +1,4 @@
-# Pieter AI Memory API - FINAL working version for llama-index==0.10.28
+# Pieter AI Memory API - Updated for Full Document Retrieval (llama-index==0.10.28)
 
 import os
 from dotenv import load_dotenv
@@ -79,13 +79,15 @@ def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ Index not initialized."
 
-    # Filters removed — unsupported in 0.10.28
     try:
-        query_engine = index.as_query_engine(similarity_top_k=5)
+        query_engine = index.as_query_engine(similarity_top_k=5, response_mode="tree_summarize")
         response = query_engine.query(question)
+
         if not response or not str(response).strip():
             return "⚠️ No answer found. Try rephrasing your question."
-        return str(response)
+
+        sources = "\n\n---\n\n".join([f"SOURCE:\n{node.get_text()}" for node in response.source_nodes])
+        return f"{str(response)}\n\n[sources used]\n{sources}"
     except Exception as e:
         return f"❌ Query error: {str(e)}"
 
