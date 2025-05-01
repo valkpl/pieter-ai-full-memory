@@ -12,7 +12,7 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
-from llama_index.core.indices.query.schema import MetadataFilter, MetadataFilters
+from llama_index.core.selectors.types import MetadataFilter, MetadataFilters  # ✅ CORRECT for 0.10.28
 from pinecone import Pinecone
 
 # Optional: log llama-index version
