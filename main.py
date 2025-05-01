@@ -1,4 +1,4 @@
-# Pieter AI Memory API - Updated with Debug + Correct llama_index imports
+# Pieter AI Memory API - Updated with Full Fallback Retrieval and Top 5 Document Surfacing
 
 import os
 from dotenv import load_dotenv
@@ -54,22 +54,33 @@ try:
 except Exception as e:
     raise RuntimeError(f"Index load failed: {str(e)}")
 
-# Query handler (increased similarity_top_k)
+# Query handler with fallback and top-5 full text return
+
 def chat_with_pieter_ai(question: str, debug: bool = False, mode: str = "full") -> str:
     if not index:
         return "⚠️ Index not initialized."
 
     try:
-        query_engine = index.as_query_engine(similarity_top_k=20, response_mode="no_text" if mode == "full" else "tree_summarize")
+        query_engine = index.as_query_engine(similarity_top_k=5, response_mode="no_text" if mode == "full" else "tree_summarize")
         response = query_engine.query(question)
 
+        # If no main result returned, fall back to top source content
         if not response or not str(response).strip():
-            return "⚠️ No answer found. Try rephrasing your question."
+            fallback_texts = []
+            for node in response.source_nodes:
+                node_text = node.node.get_text()
+                source_file = node.node.metadata.get("file_name", "UNKNOWN FILE")
+                score = node.score
+                fallback_texts.append(f"[From {source_file} | score={score:.2f}]\n{node_text}\n")
 
+            if not fallback_texts:
+                return "⚠️ No relevant content found. Try rephrasing your question."
+            return "🤖 No direct answer found, but here are the top 5 relevant documents:\n\n" + "\n---\n".join(fallback_texts)
+
+        # Otherwise return standard result
         if debug:
             debug_output = "\n\n[sources used with metadata]\n"
             for node in response.source_nodes:
-                node_text = node.node.get_text()
                 source_file = node.node.metadata.get("file_name", "UNKNOWN FILE")
                 score = node.score
                 debug_output += f"• {source_file} (score={score:.2f})\n"
