@@ -8,26 +8,24 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index.core import VectorStoreIndex, StorageContext  # ✅ CORRECT for 0.10.28
+from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.indices.service_context import ServiceContext
-from llama_index.schema import MetadataFilter, MetadataFilters  # ✅ CORRECT for 0.10.28
+from llama_index.core.service_context import ServiceContext
+from llama_index.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 import llama_index
 
-# ✅ Log actual llama-index version to Render logs
+# ✅ Confirm actual installed version in Render logs
 logging.basicConfig(level=logging.INFO)
 logging.info(f"📦 llama-index version: {llama_index.__version__}")
 
 # Load environment variables
 load_dotenv()
 
-# FastAPI app setup
 app = FastAPI()
 
-# CORS for plugin access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,18 +34,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files for plugin manifest
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
-# Initialize Pinecone (SDK v3)
+# Pinecone v3 SDK
 try:
     pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     pinecone_index = pc.Index("pieter-ai-full-memory")
 except Exception as e:
     raise RuntimeError(f"❌ Pinecone initialization failed: {str(e)}")
 
-# Setup vector store and context
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -55,7 +51,6 @@ service_context = ServiceContext.from_defaults(
     embed_model=OpenAIEmbedding()
 )
 
-# Load index
 try:
     index = VectorStoreIndex.from_vector_store(
         vector_store=vector_store,
@@ -64,20 +59,18 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index loading failed: {str(e)}")
 
-# Intent classifier
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(w in prompt for w in ["instagram", "caption", "social"]):
         return "social"
-    if any(w in prompt for w in ["article", "piece"]):
+    elif any(w in prompt for w in ["article", "piece"]):
         return "article"
-    if any(w in prompt for w in ["pitch", "pitching"]):
+    elif any(w in prompt for w in ["pitch", "pitching"]):
         return "pitch"
-    if any(w in prompt for w in ["sermon", "talk", "message", "teaching", "seminar"]):
+    elif any(w in prompt for w in ["sermon", "talk", "message", "teaching", "seminar"]):
         return "sermon"
     return "general"
 
-# Chat engine
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -91,12 +84,11 @@ def chat_with_pieter_ai(question: str) -> str:
 
     intent = classify_intent(question)
     filters = None
-    sources = filter_map.get(intent)
 
-    if sources:
+    if intent in filter_map:
         try:
             filters = MetadataFilters(
-                filters=[MetadataFilter(key="source", operator="in", value=sources)]
+                filters=[MetadataFilter(key="source", operator="in", value=filter_map[intent])]
             )
         except Exception as e:
             return f"❌ Filter construction failed: {str(e)}"
@@ -108,7 +100,6 @@ def chat_with_pieter_ai(question: str) -> str:
     except Exception as e:
         return f"❌ Query engine error: {str(e)}"
 
-# POST endpoint
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
