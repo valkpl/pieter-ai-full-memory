@@ -1,4 +1,4 @@
-# Pieter AI Memory API - Full Retrieval w/ Mode Toggle, Debug Output, Token Limit
+# Pieter AI Memory API - Optimized for Full Document Use in CustomGPT
 
 import os
 from dotenv import load_dotenv
@@ -14,6 +14,9 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
 
 from pinecone import Pinecone
+
+# Optional: log llama-index version
+import llama_index
 
 # Load env variables
 load_dotenv()
@@ -57,7 +60,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index load failed: {str(e)}")
 
-# Intent classifier (currently not used for filtering)
+# Intent classifier
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(w in prompt for w in ["instagram", "caption", "social"]):
@@ -71,41 +74,28 @@ def classify_intent(prompt):
     return "general"
 
 # Query handler
-def chat_with_pieter_ai(question: str, mode: str = "full", token_limit: int = None, debug: bool = False) -> str:
+def chat_with_pieter_ai(question: str, mode: str = "full", debug: bool = False, token_limit: int = 4000) -> str:
     if not index:
         return "⚠️ Index not initialized."
 
     try:
-        response_mode = "tree_summarize" if mode == "summary" else "no_text"
-        query_engine = index.as_query_engine(similarity_top_k=5, response_mode=response_mode)
+        query_engine = index.as_query_engine(similarity_top_k=8, response_mode="no_text")
 
         response = query_engine.query(question)
-        if not response or not str(response).strip():
-            return "⚠️ No answer found. Try rephrasing your question."
+        raw_nodes = response.source_nodes
 
-        result = str(response)
+        stitched_text = "\n\n---\n\n".join([node.get_text() for node in raw_nodes])
+        stitched_text = stitched_text[:token_limit]  # Optional safeguard
 
-        if mode == "full":
-            nodes = response.source_nodes
-            if token_limit:
-                token_count = 0
-                sources = []
-                for node in nodes:
-                    text = node.get_text()
-                    token_count += len(text.split())
-                    if token_count <= token_limit:
-                        sources.append(f"SOURCE:\n{text}")
-                    else:
-                        break
-            else:
-                sources = [f"SOURCE:\n{node.get_text()}" for node in nodes]
+        if mode == "summary":
+            return str(response)
 
-            result += "\n\n[sources used]\n" + "\n\n---\n\n".join(sources)
-
+        output = stitched_text
         if debug:
-            result = "[debug] Response retrieved\n\n" + result
+            debug_info = f"[debug] Retrieved {len(raw_nodes)} nodes, {len(stitched_text.split())} words"
+            output = f"{debug_info}\n\n{stitched_text}"
 
-        return result
+        return output
 
     except Exception as e:
         return f"❌ Query error: {str(e)}"
@@ -114,15 +104,17 @@ def chat_with_pieter_ai(question: str, mode: str = "full", token_limit: int = No
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
-        question = body.get("data", [""])[0]
-        mode = body.get("mode", "full")
-        debug = body.get("debug", False)
-        token_limit = body.get("token_limit", None)
-
-        if not question.strip():
+        question = body.get("data")
+        if not question or not isinstance(question, list) or not question[0].strip():
             return JSONResponse(status_code=400, content={"result": "⚠️ Please include a valid question."})
 
-        result = chat_with_pieter_ai(question, mode=mode, token_limit=token_limit, debug=debug)
+        # Extract optional mode/debug/token_limit from request
+        mode = body.get("mode", "full")
+        debug = body.get("debug", False)
+        token_limit = int(body.get("token_limit", 4000))
+
+        result = chat_with_pieter_ai(question[0], mode=mode, debug=debug, token_limit=token_limit)
         return JSONResponse(content={"result": result})
+
     except Exception as e:
         return JSONResponse(status_code=500, content={"result": f"❌ Internal error: {str(e)}"})
