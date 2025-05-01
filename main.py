@@ -7,12 +7,12 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index import VectorStoreIndex, StorageContext
-from llama_index.vector_stores import PineconeVectorStore
+from llama_index.core import VectorStoreIndex, StorageContext
+from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.indices.service_context import ServiceContext
-from llama_index.schema import MetadataFilter, MetadataFilters
+from llama_index.core.service_context import ServiceContext
+from llama_index.core.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
 # Optional: log llama-index version
