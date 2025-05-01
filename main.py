@@ -12,12 +12,12 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
-from llama_index.core.selectors.types import MetadataFilter, MetadataFilters  # ✅ CORRECT for 0.10.28
+
 from pinecone import Pinecone
 
 # Optional: log llama-index version
 import llama_index
-print("📦 llama-index version:", llama_index.__version__)
+# print("📦 llama-index version:", llama_index.__version__)
 
 # Load env variables
 load_dotenv()
@@ -79,25 +79,9 @@ def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ Index not initialized."
 
-    intent = classify_intent(question)
-    filter_map = {
-        "social": ["social_media", "blogs", "book"],
-        "article": ["blogs", "book"],
-        "pitch": ["blogs", "book", "social_media"],
-        "sermon": ["blogs", "book", "transcripts"]
-    }
-
-    filters = None
-    if intent in filter_map:
-        try:
-            filters = MetadataFilters(
-                filters=[MetadataFilter(key="source", operator="in", value=filter_map[intent])]
-            )
-        except Exception as e:
-            return f"❌ Filter error: {str(e)}"
-
+    # Filters removed — unsupported in 0.10.28
     try:
-        query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
+        query_engine = index.as_query_engine(similarity_top_k=5)
         response = query_engine.query(question)
         if not response or not str(response).strip():
             return "⚠️ No answer found. Try rephrasing your question."

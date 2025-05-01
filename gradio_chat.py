@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 import os
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 
 from llama_index.core import VectorStoreIndex, StorageContext
@@ -9,13 +11,10 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core.settings import Settings
 from pinecone import Pinecone, ServerlessSpec
 
-from fastapi import FastAPI
-import uvicorn
-
-# --- Load env vars ---
+# --- Load environment variables ---
 load_dotenv()
 
-# --- Set up Pinecone ---
+# --- Pinecone setup ---
 index_name = "pieter-ai-full-memory"
 pc = Pinecone(
     api_key=os.getenv("PINECONE_API_KEY"),
@@ -25,14 +24,14 @@ pinecone_index = pc.Index(index_name)
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# --- Set global models ---
-Settings.llm = OpenAI(model="gpt-4")
+# --- Global LLM + Embeddings ---
+Settings.llm = OpenAI(model="gpt-3.5-turbo")
 Settings.embed_model = OpenAIEmbedding()
 
-# --- Load vector index ---
+# --- Load index ---
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
 
-# --- Intent classification ---
+# --- Intent classifier ---
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(word in prompt for word in ["instagram", "social post", "caption", "twitter", "x ", "facebook", "threads", "tiktok", "socials"]):
@@ -45,7 +44,7 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# --- Chat logic ---
+# --- Query handler ---
 def chat_with_pieter_ai(question):
     if not index:
         return "⚠️ The vector index is not initialized."
@@ -65,17 +64,33 @@ def chat_with_pieter_ai(question):
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
-# --- Create Gradio interface ---
+# --- FastAPI App ---
+app = FastAPI()
+
+# Optional: Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Gradio App ---
 gradio_app = gr.Interface(
     fn=chat_with_pieter_ai,
-    inputs=gr.Textbox(label="Your Question"),
-    outputs=gr.Textbox(label="Pieter AI’s Response"),
-    allow_flagging="never"
-).queue()
+    inputs=gr.Textbox(lines=2, placeholder="Ask a question about celibacy, vocation, community..."),
+    outputs="text",
+    title="Pieter AI Assistant",
+    description="A chatbot trained on the life, theology, and work of Pieter Valk. Ask away!"
+)
 
-# --- Mount with FastAPI ---
-app = FastAPI()
-app = gr.mount_gradio_app(app, gradio_app, path="/predict")
+# Mount Gradio at root
+app = gr.mount_gradio_app(app, gradio_app, path="/")
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+# --- Custom API endpoint ---
+@app.post("/predict/")
+async def predict(request: Request):
+    body = await request.json()
+    question = body.get("data", [""])[0]
+    answer = chat_with_pieter_ai(question)
+    return {"response": answer}
