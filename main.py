@@ -1,7 +1,6 @@
-# Pieter AI Memory API — Stable for llama-index==0.10.28
+# Pieter AI Memory API – stable with llama-index==0.10.28
 
 import os
-import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse
@@ -13,19 +12,19 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
-from llama_index.schema import MetadataFilter, MetadataFilters
+from llama_index.core.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
-import llama_index
 
-# ✅ Confirm actual installed version in Render logs
-logging.basicConfig(level=logging.INFO)
-logging.info(f"📦 llama-index version: {llama_index.__version__}")
+import llama_index
+print("📦 llama-index version at runtime:", llama_index.__version__)
 
 # Load environment variables
 load_dotenv()
 
+# FastAPI app
 app = FastAPI()
 
+# CORS config
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,16 +33,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve plugin manifest files
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
-# Pinecone v3 SDK
+# Pinecone init
 try:
     pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     pinecone_index = pc.Index("pieter-ai-full-memory")
 except Exception as e:
     raise RuntimeError(f"❌ Pinecone initialization failed: {str(e)}")
 
+# Service context + index
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -59,6 +60,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index loading failed: {str(e)}")
 
+# Intent classifier
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(w in prompt for w in ["instagram", "caption", "social"]):
@@ -71,10 +73,12 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
+# Query logic
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ The vector index is not initialized."
 
+    intent = classify_intent(question)
     filter_map = {
         "social": ["social_media", "blogs", "book"],
         "article": ["blogs", "book"],
@@ -82,9 +86,7 @@ def chat_with_pieter_ai(question: str) -> str:
         "sermon": ["blogs", "book", "transcripts"]
     }
 
-    intent = classify_intent(question)
     filters = None
-
     if intent in filter_map:
         try:
             filters = MetadataFilters(
@@ -96,17 +98,20 @@ def chat_with_pieter_ai(question: str) -> str:
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
         response = query_engine.query(question)
-        return str(response) if str(response).strip() else "⚠️ No answer found."
+        if not response or not str(response).strip():
+            return "⚠️ No answer found. Try rephrasing your question or asking something else."
+        return str(response)
     except Exception as e:
         return f"❌ Query engine error: {str(e)}"
 
+# API route
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
-        question = body.get("data", [""])[0]
-        if not question.strip():
-            return JSONResponse(status_code=400, content={"result": "⚠️ Please include a question."})
-        result = chat_with_pieter_ai(question)
+        question = body.get("data")
+        if not question or not isinstance(question, list) or not question[0].strip():
+            return JSONResponse(status_code=400, content={"result": "⚠️ Please include a valid question."})
+        result = chat_with_pieter_ai(question[0])
         return JSONResponse(content={"result": result})
     except Exception as e:
         return JSONResponse(status_code=500, content={"result": f"❌ Internal server error: {str(e)}"})

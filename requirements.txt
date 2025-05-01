@@ -1,14 +1,6 @@
---constraint constraints.txt
-
-llama-index
-llama-index-vector-stores-pinecone
-llama-index-embeddings-openai
+llama-index==0.10.28
+fastapi
+uvicorn
+python-dotenv
 openai
 pinecone-client
-python-dotenv
-pandas
-tqdm
-uvicorn
-httpx
-fastapi
-pydantic
