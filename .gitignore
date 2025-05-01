@@ -26,3 +26,17 @@ __pycache__/
 .pieter-whisper-env/
 *.pyc
 pieter-whisper-env/
+
+# macOS
+.DS_Store
+
+# virtual environments
+pieter-ai-env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local env files
+.env
+.env
