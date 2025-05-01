@@ -1,6 +1,6 @@
+fastapi==0.95.2
+uvicorn==0.29.0
+python-dotenv==1.0.1
+openai==1.16.1
+pinecone-client==3.2.2
 llama-index==0.10.28
-fastapi
-uvicorn
-python-dotenv
-openai
-pinecone-client

@@ -1,4 +1,4 @@
-# Pieter AI Memory API – stable with llama-index==0.10.28
+# Pieter AI Memory API - FINAL working version for llama-index==0.10.28
 
 import os
 from dotenv import load_dotenv
@@ -7,24 +7,25 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from llama_index.core import VectorStoreIndex, StorageContext
-from llama_index.vector_stores.pinecone import PineconeVectorStore
+from llama_index import VectorStoreIndex, StorageContext
+from llama_index.vector_stores import PineconeVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from llama_index.core.service_context import ServiceContext
-from llama_index.core.schema import MetadataFilter, MetadataFilters
+from llama_index.indices.service_context import ServiceContext
+from llama_index.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
 
+# Optional: log llama-index version
 import llama_index
-print("📦 llama-index version at runtime:", llama_index.__version__)
+print("📦 llama-index version:", llama_index.__version__)
 
-# Load environment variables
+# Load env variables
 load_dotenv()
 
-# FastAPI app
+# FastAPI app setup
 app = FastAPI()
 
-# CORS config
+# CORS settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,18 +34,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve plugin manifest files
+# Static/manifest routes
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
-# Pinecone init
+# Initialize Pinecone
 try:
     pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     pinecone_index = pc.Index("pieter-ai-full-memory")
 except Exception as e:
-    raise RuntimeError(f"❌ Pinecone initialization failed: {str(e)}")
+    raise RuntimeError(f"❌ Pinecone init failed: {str(e)}")
 
-# Service context + index
+# Set up vector store and index
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -58,7 +59,7 @@ try:
         service_context=service_context
     )
 except Exception as e:
-    raise RuntimeError(f"❌ Index loading failed: {str(e)}")
+    raise RuntimeError(f"❌ Index load failed: {str(e)}")
 
 # Intent classifier
 def classify_intent(prompt):
@@ -73,10 +74,10 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Query logic
+# Query handler
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
-        return "⚠️ The vector index is not initialized."
+        return "⚠️ Index not initialized."
 
     intent = classify_intent(question)
     filter_map = {
@@ -93,18 +94,18 @@ def chat_with_pieter_ai(question: str) -> str:
                 filters=[MetadataFilter(key="source", operator="in", value=filter_map[intent])]
             )
         except Exception as e:
-            return f"❌ Filter construction failed: {str(e)}"
+            return f"❌ Filter error: {str(e)}"
 
     try:
         query_engine = index.as_query_engine(similarity_top_k=5, filters=filters)
         response = query_engine.query(question)
         if not response or not str(response).strip():
-            return "⚠️ No answer found. Try rephrasing your question or asking something else."
+            return "⚠️ No answer found. Try rephrasing your question."
         return str(response)
     except Exception as e:
-        return f"❌ Query engine error: {str(e)}"
+        return f"❌ Query error: {str(e)}"
 
-# API route
+# POST endpoint
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
@@ -114,4 +115,4 @@ async def predict(body: dict = Body(...)):
         result = chat_with_pieter_ai(question[0])
         return JSONResponse(content={"result": result})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"result": f"❌ Internal server error: {str(e)}"})
+        return JSONResponse(status_code=500, content={"result": f"❌ Internal error: {str(e)}"})
