@@ -1,4 +1,4 @@
-# Pieter AI Memory API - Full Source Output for CustomGPT Integration (llama-index==0.10.28)
+# Pieter AI Memory API - Full Document Stitching Enabled (llama-index==0.10.28)
 
 import os
 from dotenv import load_dotenv
@@ -15,13 +15,13 @@ from llama_index.core.service_context import ServiceContext
 
 from pinecone import Pinecone
 
-# Load env variables
+# Load environment variables
 load_dotenv()
 
-# FastAPI app setup
+# FastAPI setup
 app = FastAPI()
 
-# CORS settings
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static/manifest routes
+# Static files (OpenAPI & Logo for GPT)
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
@@ -41,7 +41,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Pinecone init failed: {str(e)}")
 
-# Set up vector store and index
+# LlamaIndex setup
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -49,6 +49,7 @@ service_context = ServiceContext.from_defaults(
     embed_model=OpenAIEmbedding()
 )
 
+# Load the index
 try:
     index = VectorStoreIndex.from_vector_store(
         vector_store=vector_store,
@@ -56,6 +57,19 @@ try:
     )
 except Exception as e:
     raise RuntimeError(f"❌ Index load failed: {str(e)}")
+
+# Intent classifier
+def classify_intent(prompt):
+    prompt = prompt.lower()
+    if any(w in prompt for w in ["instagram", "caption", "social"]):
+        return "social"
+    elif any(w in prompt for w in ["article", "piece"]):
+        return "article"
+    elif any(w in prompt for w in ["pitch", "pitching"]):
+        return "pitch"
+    elif any(w in prompt for w in ["sermon", "talk", "message", "teaching", "seminar"]):
+        return "sermon"
+    return "general"
 
 # Query handler
 def chat_with_pieter_ai(question: str) -> str:
@@ -66,12 +80,11 @@ def chat_with_pieter_ai(question: str) -> str:
         query_engine = index.as_query_engine(similarity_top_k=5, response_mode="no_text")
         response = query_engine.query(question)
 
-        if not response or not response.source_nodes:
-            return "⚠️ No matching sources found. Try rephrasing your question."
+        if not response or not str(response).strip():
+            return "⚠️ No answer found. Try rephrasing your question."
 
-        # Return full unfiltered content
-        sources = "\n\n---\n\n".join([f"SOURCE {i+1}:\n{node.get_text()}" for i, node in enumerate(response.source_nodes)])
-        return f"[retrieved full source chunks]\n\n{sources}"
+        full_text = "\n\n".join([node.get_text() for node in response.source_nodes])
+        return full_text.strip()
     except Exception as e:
         return f"❌ Query error: {str(e)}"
 
