@@ -1,4 +1,4 @@
-# Pieter AI Memory API - Enhanced for CustomGPT Integration (llama-index==0.10.28)
+# Pieter AI Memory API - Full Retrieval w/ Mode Toggle, Debug Output, Token Limit
 
 import os
 from dotenv import load_dotenv
@@ -14,10 +14,6 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
 
 from pinecone import Pinecone
-
-# Optional: log llama-index version
-import llama_index
-# print("📦 llama-index version:", llama_index.__version__)
 
 # Load env variables
 load_dotenv()
@@ -61,7 +57,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index load failed: {str(e)}")
 
-# Intent classifier (optional utility)
+# Intent classifier (currently not used for filtering)
 def classify_intent(prompt):
     prompt = prompt.lower()
     if any(w in prompt for w in ["instagram", "caption", "social"]):
@@ -74,64 +70,59 @@ def classify_intent(prompt):
         return "sermon"
     return "general"
 
-# Helper to estimate tokens
-def estimate_tokens(text):
-    return int(len(text) / 4)  # crude estimate: 4 chars ≈ 1 token
-
 # Query handler
-def chat_with_pieter_ai(question: str, mode: str = "summary", debug: bool = False, max_tokens: int = 12000) -> dict:
+def chat_with_pieter_ai(question: str, mode: str = "full", token_limit: int = None, debug: bool = False) -> str:
     if not index:
-        return {"result": "⚠️ Index not initialized."}
+        return "⚠️ Index not initialized."
 
     try:
+        response_mode = "tree_summarize" if mode == "summary" else "no_text"
+        query_engine = index.as_query_engine(similarity_top_k=5, response_mode=response_mode)
+
+        response = query_engine.query(question)
+        if not response or not str(response).strip():
+            return "⚠️ No answer found. Try rephrasing your question."
+
+        result = str(response)
+
         if mode == "full":
-            query_engine = index.as_query_engine(similarity_top_k=10, response_mode="no_text")
-            response = query_engine.query(question)
+            nodes = response.source_nodes
+            if token_limit:
+                token_count = 0
+                sources = []
+                for node in nodes:
+                    text = node.get_text()
+                    token_count += len(text.split())
+                    if token_count <= token_limit:
+                        sources.append(f"SOURCE:\n{text}")
+                    else:
+                        break
+            else:
+                sources = [f"SOURCE:\n{node.get_text()}" for node in nodes]
 
-            stitched_sources = []
-            total_tokens = 0
-            for node in response.source_nodes:
-                node_text = node.get_text()
-                tokens = estimate_tokens(node_text)
-                if total_tokens + tokens > max_tokens:
-                    break
-                stitched_sources.append(node_text)
-                total_tokens += tokens
-
-            result = "\n\n---\n\n".join(stitched_sources) or "⚠️ No sources returned."
-        else:
-            query_engine = index.as_query_engine(similarity_top_k=5, response_mode="tree_summarize")
-            response = query_engine.query(question)
-            result = str(response)
-
-        output = {"result": result}
+            result += "\n\n[sources used]\n" + "\n\n---\n\n".join(sources)
 
         if debug:
-            output["debug"] = {
-                "mode": mode,
-                "source_count": len(response.source_nodes) if hasattr(response, "source_nodes") else 0,
-                "token_estimate": estimate_tokens(result)
-            }
+            result = "[debug] Response retrieved\n\n" + result
 
-        return output
+        return result
 
     except Exception as e:
-        return {"result": f"❌ Query error: {str(e)}"}
+        return f"❌ Query error: {str(e)}"
 
 # POST endpoint
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
-        question = body.get("data")
-        mode = body.get("mode", "summary")
+        question = body.get("data", [""])[0]
+        mode = body.get("mode", "full")
         debug = body.get("debug", False)
-        max_tokens = int(body.get("max_tokens", 12000))
+        token_limit = body.get("token_limit", None)
 
-        if not question or not isinstance(question, list) or not question[0].strip():
+        if not question.strip():
             return JSONResponse(status_code=400, content={"result": "⚠️ Please include a valid question."})
 
-        response_data = chat_with_pieter_ai(question[0], mode=mode, debug=debug, max_tokens=max_tokens)
-        return JSONResponse(content=response_data)
-
+        result = chat_with_pieter_ai(question, mode=mode, token_limit=token_limit, debug=debug)
+        return JSONResponse(content={"result": result})
     except Exception as e:
         return JSONResponse(status_code=500, content={"result": f"❌ Internal error: {str(e)}"})
