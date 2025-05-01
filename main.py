@@ -1,6 +1,7 @@
 # Pieter AI Memory API - Stable for llama-index==0.10.28
 
 import os
+import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse
@@ -14,13 +15,20 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
 from llama_index.core.schema import MetadataFilter, MetadataFilters
 from pinecone import Pinecone
-
-# Optional: confirm installed version
 import llama_index
-print("📦 llama-index version:", llama_index.__version__)
+
+# Log llama-index version at runtime
+logging.basicConfig(level=logging.INFO)
+logging.info(f"📦 llama-index runtime version: {llama_index.__version__}")
 
 # Load environment variables
 load_dotenv()
+
+# Fail fast if .env values are missing
+if not os.getenv("PINECONE_API_KEY"):
+    raise RuntimeError("❌ PINECONE_API_KEY is missing from environment.")
+if not os.getenv("OPENAI_API_KEY"):
+    raise RuntimeError("❌ OPENAI_API_KEY is missing from environment.")
 
 # FastAPI app
 app = FastAPI()
@@ -85,13 +93,15 @@ def chat_with_pieter_ai(question: str) -> str:
         "pitch": ["blogs", "book", "social_media"],
         "sermon": ["blogs", "book", "transcripts"]
     }
+
     intent = classify_intent(question)
     filters = None
+    sources = filter_map.get(intent)
 
-    if intent in filter_map:
+    if sources:
         try:
             filters = MetadataFilters(
-                filters=[MetadataFilter(key="source", operator="in", value=filter_map[intent])]
+                filters=[MetadataFilter(key="source", operator="in", value=sources)]
             )
         except Exception as e:
             return f"❌ Filter construction failed: {str(e)}"
