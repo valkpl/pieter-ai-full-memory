@@ -1,4 +1,4 @@
-# Pieter AI Memory API - Updated for Full Document Retrieval (llama-index==0.10.28)
+# Pieter AI Memory API - Full Source Output for CustomGPT Integration (llama-index==0.10.28)
 
 import os
 from dotenv import load_dotenv
@@ -14,10 +14,6 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core.service_context import ServiceContext
 
 from pinecone import Pinecone
-
-# Optional: log llama-index version
-import llama_index
-# print("📦 llama-index version:", llama_index.__version__)
 
 # Load env variables
 load_dotenv()
@@ -61,33 +57,21 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index load failed: {str(e)}")
 
-# Intent classifier
-def classify_intent(prompt):
-    prompt = prompt.lower()
-    if any(w in prompt for w in ["instagram", "caption", "social"]):
-        return "social"
-    elif any(w in prompt for w in ["article", "piece"]):
-        return "article"
-    elif any(w in prompt for w in ["pitch", "pitching"]):
-        return "pitch"
-    elif any(w in prompt for w in ["sermon", "talk", "message", "teaching", "seminar"]):
-        return "sermon"
-    return "general"
-
 # Query handler
 def chat_with_pieter_ai(question: str) -> str:
     if not index:
         return "⚠️ Index not initialized."
 
     try:
-        query_engine = index.as_query_engine(similarity_top_k=5, response_mode="tree_summarize")
+        query_engine = index.as_query_engine(similarity_top_k=5, response_mode="no_text")
         response = query_engine.query(question)
 
-        if not response or not str(response).strip():
-            return "⚠️ No answer found. Try rephrasing your question."
+        if not response or not response.source_nodes:
+            return "⚠️ No matching sources found. Try rephrasing your question."
 
-        sources = "\n\n---\n\n".join([f"SOURCE:\n{node.get_text()}" for node in response.source_nodes])
-        return f"{str(response)}\n\n[sources used]\n{sources}"
+        # Return full unfiltered content
+        sources = "\n\n---\n\n".join([f"SOURCE {i+1}:\n{node.get_text()}" for i, node in enumerate(response.source_nodes)])
+        return f"[retrieved full source chunks]\n\n{sources}"
     except Exception as e:
         return f"❌ Query error: {str(e)}"
 
