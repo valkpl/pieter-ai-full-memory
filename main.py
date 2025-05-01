@@ -1,4 +1,4 @@
-# Pieter AI Memory API - Optimized for Full Document Use in CustomGPT
+# Pieter AI Memory API - Full Document Mode + Debug Output (llama-index==0.10.28)
 
 import os
 from dotenv import load_dotenv
@@ -15,16 +15,13 @@ from llama_index.core.service_context import ServiceContext
 
 from pinecone import Pinecone
 
-# Optional: log llama-index version
 import llama_index
 
 # Load env variables
 load_dotenv()
 
-# FastAPI app setup
+# FastAPI setup
 app = FastAPI()
-
-# CORS settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,18 +30,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static/manifest routes
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well-known")
 app.mount("/static", StaticFiles(directory=".", html=True), name="static")
 
-# Initialize Pinecone
+# Init Pinecone
 try:
     pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     pinecone_index = pc.Index("pieter-ai-full-memory")
 except Exception as e:
     raise RuntimeError(f"❌ Pinecone init failed: {str(e)}")
 
-# Set up vector store and index
+# Setup vector store and service context
 vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 service_context = ServiceContext.from_defaults(
@@ -60,61 +56,78 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Index load failed: {str(e)}")
 
-# Intent classifier
-def classify_intent(prompt):
-    prompt = prompt.lower()
-    if any(w in prompt for w in ["instagram", "caption", "social"]):
-        return "social"
-    elif any(w in prompt for w in ["article", "piece"]):
-        return "article"
-    elif any(w in prompt for w in ["pitch", "pitching"]):
-        return "pitch"
-    elif any(w in prompt for w in ["sermon", "talk", "message", "teaching", "seminar"]):
-        return "sermon"
-    return "general"
-
-# Query handler
-def chat_with_pieter_ai(question: str, mode: str = "full", debug: bool = False, token_limit: int = 4000) -> str:
+# Query engine
+def chat_with_pieter_ai(question: str, mode="summary", debug=False, max_tokens=None):
     if not index:
-        return "⚠️ Index not initialized."
+        return {"text": "⚠️ Index not initialized."}
 
     try:
-        query_engine = index.as_query_engine(similarity_top_k=8, response_mode="no_text")
+        response_mode = "tree_summarize" if mode == "summary" else "no_text"
+        query_engine = index.as_query_engine(
+            similarity_top_k=5,
+            response_mode=response_mode
+        )
 
         response = query_engine.query(question)
-        raw_nodes = response.source_nodes
 
-        stitched_text = "\n\n---\n\n".join([node.get_text() for node in raw_nodes])
-        stitched_text = stitched_text[:token_limit]  # Optional safeguard
+        if not response or not str(response).strip():
+            return {"text": "⚠️ No answer found. Try rephrasing your question."}
 
-        if mode == "summary":
-            return str(response)
+        debug_log = ""
+        sources_text = ""
 
-        output = stitched_text
+        if hasattr(response, "source_nodes") and response.source_nodes:
+            if mode == "full":
+                chunks = [node.get_text() for node in response.source_nodes]
+                if max_tokens:
+                    total = 0
+                    trimmed_chunks = []
+                    for chunk in chunks:
+                        chunk_tokens = len(chunk.split())
+                        if total + chunk_tokens > max_tokens:
+                            break
+                        trimmed_chunks.append(chunk)
+                        total += chunk_tokens
+                    chunks = trimmed_chunks
+                sources_text = "\n\n---\n\n".join([f"SOURCE:\n{c}" for c in chunks])
+            else:
+                sources_text = ""
+
         if debug:
-            debug_info = f"[debug] Retrieved {len(raw_nodes)} nodes, {len(stitched_text.split())} words"
-            output = f"{debug_info}\n\n{stitched_text}"
+            debug_log += f"\n\n[debug] top_k={len(response.source_nodes)}"
+            debug_log += f"\n[debug] response_mode={response_mode}"
+            debug_log += f"\n[debug] token_limit={max_tokens or '∞'}"
+            debug_log += "\n[debug] source preview:\n"
+            for i, node in enumerate(response.source_nodes[:3]):
+                preview = node.get_text().strip().split("\n")[0][:100]
+                debug_log += f"  {i+1}. {preview}...\n"
 
-        return output
+        return {
+            "text": str(response),
+            "sources_text": f"\n\n[sources used]\n{sources_text}" if sources_text else "",
+            "debug_log": debug_log if debug else ""
+        }
 
     except Exception as e:
-        return f"❌ Query error: {str(e)}"
+        return {"text": f"❌ Query error: {str(e)}"}
 
 # POST endpoint
 @app.post("/predict/")
 async def predict(body: dict = Body(...)):
     try:
-        question = body.get("data")
-        if not question or not isinstance(question, list) or not question[0].strip():
+        question = body.get("data", [""])[0]
+        if not question.strip():
             return JSONResponse(status_code=400, content={"result": "⚠️ Please include a valid question."})
 
-        # Extract optional mode/debug/token_limit from request
-        mode = body.get("mode", "full")
+        mode = body.get("mode", "summary")
         debug = body.get("debug", False)
-        token_limit = int(body.get("token_limit", 4000))
+        max_tokens = body.get("max_tokens", None)
 
-        result = chat_with_pieter_ai(question[0], mode=mode, debug=debug, token_limit=token_limit)
-        return JSONResponse(content={"result": result})
+        result = chat_with_pieter_ai(question, mode=mode, debug=debug, max_tokens=max_tokens)
+
+        # Stitch full return into `result` for CustomGPT display
+        combined = result["text"] + result.get("sources_text", "") + result.get("debug_log", "")
+        return JSONResponse(content={"result": combined})
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"result": f"❌ Internal error: {str(e)}"})
